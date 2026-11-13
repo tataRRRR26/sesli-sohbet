@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sesli Sohbet</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    color: #eee;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .card {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 16px;
+    padding: 32px;
+    width: 100%;
+    max-width: 420px;
+    text-align: center;
+  }
+  h1 { font-size: 1.5rem; margin-bottom: 8px; }
+  .subtitle { color: #aaa; font-size: 0.9rem; margin-bottom: 24px; }
+  .my-id-box {
+    background: rgba(0,0,0,0.3);
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 20px;
+  }
+  .my-id-label { font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+  .my-id {
+    font-size: 1.6rem;
+    font-weight: bold;
+    letter-spacing: 4px;
+    color: #4ecca3;
+    margin: 6px 0;
+    font-family: monospace;
+  }
+  button {
+    border: none;
+    border-radius: 10px;
+    padding: 12px 20px;
+    font-size: 1rem;
+    cursor: pointer;
+    font-weight: 600;
+    transition: opacity 0.2s, transform 0.1s;
+  }
+  button:hover { opacity: 0.85; }
+  button:active { transform: scale(0.97); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-copy { background: #333a56; color: #eee; font-size: 0.85rem; padding: 8px 16px; }
+  .btn-call { background: #4ecca3; color: #16213e; width: 100%; margin-top: 10px; }
+  .btn-hangup { background: #e94560; color: #fff; width: 48%; }
+  .btn-mute { background: #333a56; color: #eee; width: 48%; }
+  input {
+    width: 100%;
+    padding: 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.2);
+    background: rgba(0,0,0,0.3);
+    color: #eee;
+    font-size: 1.2rem;
+    text-align: center;
+    letter-spacing: 3px;
+    font-family: monospace;
+    text-transform: uppercase;
+  }
+  input:focus { outline: 2px solid #4ecca3; }
+  .status {
+    margin-top: 20px;
+    padding: 10px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    background: rgba(0,0,0,0.25);
+    color: #aaa;
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .status.connected { color: #4ecca3; }
+  .status.error { color: #e94560; }
+  .pulse {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: #4ecca3;
+    animation: pulse 1.2s infinite;
+  }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(78,204,163,0.6); }
+    70% { box-shadow: 0 0 0 10px rgba(78,204,163,0); }
+    100% { box-shadow: 0 0 0 0 rgba(78,204,163,0); }
+  }
+  .call-controls { display: none; justify-content: space-between; margin-top: 16px; }
+  .incoming {
+    display: none;
+    margin-top: 16px;
+    padding: 16px;
+    background: rgba(78,204,163,0.1);
+    border: 1px solid #4ecca3;
+    border-radius: 10px;
+  }
+  .incoming-btns { display: flex; gap: 10px; margin-top: 12px; }
+  .btn-accept { background: #4ecca3; color: #16213e; flex: 1; }
+  .btn-reject { background: #e94560; color: #fff; flex: 1; }
+  .section-call { margin-top: 4px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>🎙️ Sesli Sohbet</h1>
+  <p class="subtitle">Kodunu arkadaşına gönder, o da kodu girip arasın!</p>
+
+  <div class="my-id-box">
+    <div class="my-id-label">Senin Kodun</div>
+    <div class="my-id" id="myId">...</div>
+    <button class="btn-copy" onclick="copyId()">📋 Kopyala</button>
+  </div>
+
+  <div class="section-call" id="callSection">
+    <input type="text" id="friendId" placeholder="ARKADAŞ KODU" maxlength="6">
+    <button class="btn-call" id="callBtn" onclick="callFriend()" disabled>📞 Ara</button>
+  </div>
+
+  <div class="incoming" id="incomingBox">
+    <div>📲 <b id="callerName"></b> seni arıyor!</div>
+    <div class="incoming-btns">
+      <button class="btn-accept" onclick="acceptCall()">✅ Kabul Et</button>
+      <button class="btn-reject" onclick="rejectCall()">❌ Reddet</button>
+    </div>
+  </div>
+
+  <div class="call-controls" id="callControls">
+    <button class="btn-mute" id="muteBtn" onclick="toggleMute()">🔇 Sustur</button>
+    <button class="btn-hangup" onclick="hangUp()">📵 Kapat</button>
+  </div>
+
+  <div class="status" id="status">Bağlanılıyor...</div>
+  <audio id="remoteAudio" autoplay></audio>
+</div>
+
+<script>
+let peer = null;
+let currentCall = null;
+let incomingCall = null;
+let localStream = null;
+let muted = false;
+
+const $ = id => document.getElementById(id);
+
+// 6 haneli kolay okunur kod üret
+function makeId() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let s = '';
+  for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
+}
+
+function setStatus(text, cls = '') {
+  const el = $('status');
+  el.className = 'status ' + cls;
+  el.innerHTML = cls === 'connected' ? '<div class="pulse"></div>' + text : text;
+}
+
+function init() {
+  const myId = makeId();
+  peer = new Peer('sesli-' + myId, { debug: 1 });
+
+  peer.on('open', () => {
+    $('myId').textContent = myId;
+    $('callBtn').disabled = false;
+    setStatus('Hazır ✅ Kodunu paylaş veya arkadaşının kodunu gir.');
+  });
+
+  peer.on('error', (err) => {
+    if (err.type === 'unavailable-id') { init(); return; } // kod çakıştı, yenisini dene
+    if (err.type === 'peer-unavailable') {
+      setStatus('Bu kodda kimse yok. Kodu kontrol et, arkadaşının sayfası açık olmalı.', 'error');
+      $('callBtn').disabled = false;
+      return;
+    }
+    setStatus('Hata: ' + err.type + ' — Sayfayı yenilemeyi dene.', 'error');
+  });
+
+  peer.on('call', (call) => {
+    incomingCall = call;
+    $('callerName').textContent = call.peer.replace('sesli-', '');
+    $('incomingBox').style.display = 'block';
+    $('callSection').style.display = 'none';
+  });
+
+  peer.on('disconnected', () => {
+    setStatus('Sunucu bağlantısı koptu, yeniden bağlanılıyor...');
+    peer.reconnect();
+  });
+}
+
+async function getMic() {
+  if (localStream) return localStream;
+  localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  return localStream;
+}
+
+async function callFriend() {
+  const friendId = $('friendId').value.trim().toUpperCase();
+  if (!friendId) { setStatus('Önce arkadaşının kodunu gir!', 'error'); return; }
+  try {
+    const stream = await getMic();
+    setStatus('Aranıyor...');
+    $('callBtn').disabled = true;
+    const call = peer.call('sesli-' + friendId, stream);
+    setupCall(call);
+  } catch (e) {
+    setStatus('Mikrofon izni gerekli! Tarayıcıdan izin ver.', 'error');
+  }
+}
+
+async function acceptCall() {
+  try {
+    const stream = await getMic();
+    incomingCall.answer(stream);
+    setupCall(incomingCall);
+    incomingCall = null;
+    $('incomingBox').style.display = 'none';
+  } catch (e) {
+    setStatus('Mikrofon izni gerekli! Tarayıcıdan izin ver.', 'error');
+  }
+}
+
+function rejectCall() {
+  if (incomingCall) { incomingCall.close(); incomingCall = null; }
+  $('incomingBox').style.display = 'none';
+  $('callSection').style.display = 'block';
+  setStatus('Arama reddedildi.');
+}
+
+function setupCall(call) {
+  currentCall = call;
+  call.on('stream', (remoteStream) => {
+    $('remoteAudio').srcObject = remoteStream;
+    $('callSection').style.display = 'none';
+    $('callControls').style.display = 'flex';
+    setStatus('Bağlandı! Konuşabilirsiniz 🎉', 'connected');
+  });
+  call.on('close', endCallUI);
+  call.on('error', endCallUI);
+}
+
+function endCallUI() {
+  currentCall = null;
+  $('callControls').style.display = 'none';
+  $('callSection').style.display = 'block';
+  $('callBtn').disabled = false;
+  $('remoteAudio').srcObject = null;
+  setStatus('Arama sona erdi.');
+}
+
+function hangUp() {
+  if (currentCall) currentCall.close();
+  endCallUI();
+}
+
+function toggleMute() {
+  if (!localStream) return;
+  muted = !muted;
+  localStream.getAudioTracks().forEach(t => t.enabled = !muted);
+  $('muteBtn').textContent = muted ? '🔊 Aç' : '🔇 Sustur';
+}
+
+function copyId() {
+  const id = $('myId').textContent;
+  navigator.clipboard.writeText(id).then(() => setStatus('Kod kopyalandı! 📋 Arkadaşına gönder.'));
+}
+
+$('friendId').addEventListener('keydown', e => { if (e.key === 'Enter') callFriend(); });
+
+init();
+</script>
+</body>
+</html>
